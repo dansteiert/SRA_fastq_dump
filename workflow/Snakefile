@@ -1,0 +1,56 @@
+work_dir = config["work_dir"]
+assensions = config["assensions"]
+
+
+rule all:
+	input:
+		expand(os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"), assension=assensions, read=["1", "2"])
+
+rule prefetch:
+	params:
+		output_dir =os.path.join(work_dir, "{assension}")
+	output:
+		path =os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra")
+	# container: "docker://ncbi/sra-tools:latest"
+	conda: "envs/sra-tools.yaml"
+	threads: 1	
+	resources:
+		mem_mb=4000,
+		runtime=60 * 24,
+		nodes=1,
+	shell:
+		"prefetch --max-size 999TB {wildcards.assension}  -O {params.output_dir}" # --force all
+
+
+rule get_fastq:
+	input:
+		sra =os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra")
+	params:
+		input_dir =os.path.join(work_dir, "{assension}", "{assension}"),
+		output_dir =os.path.join(work_dir, "{assension}", "{assension}")
+	output:
+		r1 = temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_1.fastq")),
+		r2 =temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_2.fastq")),
+	# container: "docker://ncbi/sra-tools:latest"
+	conda: "envs/sra-tools.yaml"
+	threads: 1	
+	resources:
+		mem_mb=8000,
+		runtime=60 * 24,
+		nodes=1,
+	shell:
+		"fasterq-dump  -O {params.output_dir} --split-files {params.input_dir}"
+
+rule convert_to_gz:
+	input:
+		file = os.path.join(work_dir, "{assension}", "{assension}", "{assension}_{read}.fastq")
+	output:
+		file = os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"),
+	# container: "docker://ncbi/sra-tools:latest"
+	threads: 1	
+	resources:
+		mem_mb=4000,
+		runtime=60 * 24,
+		nodes=1,
+	shell:
+		"gzip -c {input.file} > {output.file}"

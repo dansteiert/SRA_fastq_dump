@@ -1,0 +1,6 @@
+name: sra_tools
+channels:
+  - bioconda
+dependencies:
+  - sra-tools
+# prefix: /data/cephfs-1/work/groups/keller/users/steiertd_c/miniforge3/envs/sra_tools
