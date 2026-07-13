@@ -1,56 +1,84 @@
 work_dir = config["work_dir"]
 assensions = config["assensions"]
+if "ngc_file" in config:
+    ngc_file = config["ngc_file"]
+else:
+    ngc_file = None
 
 
 rule all:
-	input:
-		expand(os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"), assension=assensions, read=["1", "2"])
+    input:
+        expand(os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"), assension=assensions, read=["1", "2"])
 
 rule prefetch:
-	params:
-		output_dir =os.path.join(work_dir, "{assension}")
-	output:
-		path =os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra")
-	# container: "docker://ncbi/sra-tools:latest"
-	conda: "envs/sra-tools.yaml"
-	threads: 1	
-	resources:
-		mem_mb=4000,
-		runtime=60 * 24,
-		nodes=1,
-	shell:
-		"prefetch --max-size 999TB {wildcards.assension}  -O {params.output_dir}" # --force all
+    params:
+        output_dir =os.path.join(work_dir, "{assension}"),
+        ngc_call = f"--ngc {ngc_file}" if ngc_file is not None else "",
+    output:
+        dir = temp(directory(os.path.join(work_dir, "{assension}", "temp_{assension}"))),
+        #path =os.path.join(work_dir, "{assension}", "{assension}", "{assension}_dbgab_{hash}.sra"),
+    # container: "docker://ncbi/sra-tools:latest"
+    conda: "envs/sra-tools.yaml"
+    threads: 1
+    resources:
+        mem_mb=4000,
+        runtime=60 * 24,
+        nodes=1,
+    shell:
+        "prefetch --max-size 999TB {wildcards.assension} {params.ngc_call} -O {params.output_dir}" # --force all
+
+
+if ngc_file is not None:
+    rule mv_tmp_file:
+        input:
+            input_dir = directory(os.path.join(work_dir, "{assension}", "temp_{assension}")),
+            # sra =os.path.join(work_dir, "{assension}", "{assension}", "{assension}_dbgap_{hash}.sra")
+        params:
+            new_dir= lambda wc: os.path.join(work_dir, "{wc.assension}", "{wc.assension}"),
+            input_path= lambda wc: os.path.join(work_dir, "{wc.assension}", "{wc.assension}", "{wc.assension}_dbgap_*.sra"),
+        output:
+            path =temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra"))
+        # container: "docker://ncbi/sra-tools:latest"
+        conda: "envs/sra-tools.yaml"
+        threads: 1
+        resources:
+            mem_mb=4000,
+            runtime=20,
+            nodes=1,
+        shell:
+            "mkdir -p {params.new_dir}; mv {params.input_path} {output.path}"
 
 
 rule get_fastq:
-	input:
-		sra =os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra")
-	params:
-		input_dir =os.path.join(work_dir, "{assension}", "{assension}"),
-		output_dir =os.path.join(work_dir, "{assension}", "{assension}")
-	output:
-		r1 = temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_1.fastq")),
-		r2 =temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_2.fastq")),
-	# container: "docker://ncbi/sra-tools:latest"
-	conda: "envs/sra-tools.yaml"
-	threads: 1	
-	resources:
-		mem_mb=8000,
-		runtime=60 * 24,
-		nodes=1,
-	shell:
-		"fasterq-dump  -O {params.output_dir} --split-files {params.input_dir}"
+    input:
+        sra =os.path.join(work_dir, "{assension}", "{assension}", "{assension}.sra")
+    params:
+        input_dir =os.path.join(work_dir, "{assension}", "{assension}"),
+        output_dir =os.path.join(work_dir, "{assension}", "{assension}"),
+        ngc_call = f"--ngc {ngc_file}" if ngc_file is not None else "",
+    output:
+        r1 = temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_1.fastq")),
+        r2 =temp(os.path.join(work_dir, "{assension}", "{assension}", "{assension}_2.fastq")),
+    # container: "docker://ncbi/sra-tools:latest"
+    conda: "envs/sra-tools.yaml"
+    threads: 1
+    resources:
+        mem_mb=8000,
+        runtime=60 * 24,
+        nodes=1,
+    shell:
+        "fasterq-dump  -O {params.output_dir} {params.ngc_call} --split-files {params.input_dir}"
 
 rule convert_to_gz:
-	input:
-		file = os.path.join(work_dir, "{assension}", "{assension}", "{assension}_{read}.fastq")
-	output:
-		file = os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"),
-	# container: "docker://ncbi/sra-tools:latest"
-	threads: 1	
-	resources:
-		mem_mb=4000,
-		runtime=60 * 24,
-		nodes=1,
-	shell:
-		"gzip -c {input.file} > {output.file}"
+    input:
+        file = os.path.join(work_dir, "{assension}", "{assension}", "{assension}_{read}.fastq")
+    output:
+        file = os.path.join(work_dir, "{assension}", "{assension}_{read}.fastq.gz"),
+    # container: "docker://ncbi/sra-tools:latest"
+    threads: 1
+    resources:
+        mem_mb=4000,
+        runtime=60 * 24,
+        nodes=1,
+    shell:
+        "gzip -c {input.file} > {output.file}"
